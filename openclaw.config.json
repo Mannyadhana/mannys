@@ -1,0 +1,13 @@
+{
+  "agents": {
+    "defaults": {
+      "models": {
+        "anthropic/claude-sonnet-4-6": {
+          "params": {
+            "cacheRetention": "long"
+          }
+        }
+      }
+    }
+  }
+}
