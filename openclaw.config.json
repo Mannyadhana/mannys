@@ -7,6 +7,10 @@
             "cacheRetention": "long"
           }
         }
+      },
+      "compaction": {
+        "mode": "safeguard",
+        "reserveTokens": 150000
       }
     }
   }
