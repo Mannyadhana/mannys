@@ -10,6 +10,8 @@ const MIN_IMPRESSIONS = parseInt(process.env.MIN_IMPRESSIONS || 500);
 const MAX_CPL = parseFloat(process.env.MAX_COST_PER_LEAD || 50);
 const MAX_FREQUENCY = parseFloat(process.env.MAX_FREQUENCY || 3);
 const CHECK_INTERVAL_HOURS = parseInt(process.env.CHECK_INTERVAL_HOURS || 6);
+const BUDGET_BOOST_PERCENT = parseInt(process.env.BUDGET_BOOST_PERCENT || 20);
+const MAX_DAILY_BUDGET = parseInt(process.env.MAX_DAILY_BUDGET || 10000); // $100 in cents
 
 bizSdk.FacebookAdsApi.init(accessToken);
 const AdAccount = bizSdk.AdAccount;
@@ -124,10 +126,27 @@ async function runOptimization() {
       continue;
     }
 
-    // Rule 5: Flag winners
+    // Rule 5: Winners — boost budget on their ad set
     if (ctr >= CTR_THRESHOLD && impressions >= MIN_IMPRESSIONS) {
       winners++;
       log(`WINNER: ${data.name} - CTR: ${ctr.toFixed(2)}%, Leads: ${leads}, CPL: $${parseFloat(costPerLead).toFixed(2)}`);
+
+      // Boost budget on the winning ad's ad set
+      try {
+        const adSet = new bizSdk.AdSet(data.adset_id);
+        const adSetData = await adSet.get(["daily_budget", "name"]);
+        const currentBudget = parseInt(adSetData._data.daily_budget || 0);
+        const newBudget = Math.round(currentBudget * (1 + BUDGET_BOOST_PERCENT / 100));
+
+        if (newBudget <= MAX_DAILY_BUDGET && newBudget > currentBudget) {
+          await adSet.update([], { daily_budget: newBudget });
+          log(`BUDGET BOOST: ${adSetData._data.name} - $${(currentBudget / 100).toFixed(2)}/day -> $${(newBudget / 100).toFixed(2)}/day (+${BUDGET_BOOST_PERCENT}%) — triggered by winner: ${data.name}`);
+        } else if (newBudget > MAX_DAILY_BUDGET) {
+          log(`BUDGET CAP: ${adSetData._data.name} already at max $${(MAX_DAILY_BUDGET / 100).toFixed(2)}/day`);
+        }
+      } catch (budgetErr) {
+        log(`BUDGET ERROR: Could not boost budget for ${data.name} - ${budgetErr.message}`);
+      }
     }
 
     await new Promise((r) => setTimeout(r, 300));
@@ -142,7 +161,7 @@ async function runOptimization() {
 
 async function startLoop() {
   log(`Optimizer started - checking every ${CHECK_INTERVAL_HOURS} hours`);
-  log(`Rules: Kill CTR < 0.5% after ${MIN_IMPRESSIONS} imp | Kill CPL > $${MAX_CPL} | Kill frequency > ${MAX_FREQUENCY}`);
+  log(`Rules: Kill CTR < 0.5% after ${MIN_IMPRESSIONS} imp | Kill CPL > $${MAX_CPL} | Kill frequency > ${MAX_FREQUENCY} | Boost winners +${BUDGET_BOOST_PERCENT}% (max $${(MAX_DAILY_BUDGET / 100).toFixed(0)}/day)`);
   log("");
 
   // Run immediately
