@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1200px; height: 628px; overflow: hidden; font-family: 'Inter', 'Arial Black', sans-serif; }
+  .container {
+    width: 1200px; height: 628px; position: relative;
+    background: linear-gradient(135deg, #0a1628 0%, #0f3460 40%, #1a5276 70%, #2471a3 100%);
+  }
+  .warehouse-shapes {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    opacity: 0.15;
+    background:
+      linear-gradient(45deg, transparent 40%, rgba(255,255,255,0.1) 40%, rgba(255,255,255,0.1) 42%, transparent 42%),
+      linear-gradient(-45deg, transparent 60%, rgba(255,255,255,0.05) 60%, rgba(255,255,255,0.05) 62%, transparent 62%),
+      radial-gradient(circle at 80% 20%, rgba(79,195,247,0.2) 0%, transparent 40%),
+      radial-gradient(circle at 20% 80%, rgba(79,195,247,0.1) 0%, transparent 30%);
+  }
+  .content {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 60px 80px;
+    z-index: 2;
+  }
+  .badge {
+    display: inline-block; padding: 8px 20px; border-radius: 4px;
+    background: #4FC3F7; color: #0a1628; font-size: 15px;
+    font-weight: 800; text-transform: uppercase; letter-spacing: 2.5px;
+    margin-bottom: 28px; width: fit-content;
+  }
+  .headline {
+    font-size: 56px; font-weight: 900; color: #fff; line-height: 1.08;
+    margin-bottom: 22px; max-width: 780px;
+    text-shadow: 0 2px 20px rgba(0,0,0,0.4);
+  }
+  .subheadline {
+    font-size: 26px; font-weight: 600; color: #4FC3F7;
+    margin-bottom: 36px; max-width: 700px;
+    letter-spacing: 0.3px;
+  }
+  .cta-btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 18px 44px; border-radius: 6px;
+    background: #4FC3F7; color: #0a1628; font-size: 18px;
+    font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px;
+    width: fit-content;
+    box-shadow: 0 4px 20px rgba(79,195,247,0.4);
+  }
+  .cta-btn .arrow { font-size: 22px; }
+  .bottom-bar {
+    position: absolute; bottom: 0; left: 0; width: 100%; height: 60px;
+    background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 40px;
+    z-index: 2;
+    border-top: 2px solid rgba(79,195,247,0.3);
+  }
+  .location {
+    color: rgba(255,255,255,0.9); font-size: 15px; font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  .brand {
+    color: #4FC3F7; font-size: 15px; font-weight: 700;
+    text-align: right;
+  }
+  .accent-line {
+    position: absolute; left: 80px; top: 55px; bottom: 55px;
+    width: 4px; background: #4FC3F7; border-radius: 2px;
+    z-index: 2; opacity: 0.6;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="warehouse-shapes"></div>
+  <div class="accent-line"></div>
+  <div class="content" style="padding-left: 110px;">
+    <div class="badge">Truganina Warehouses</div>
+    <div class="headline">Rent Going Up Again This Year?</div>
+    <div class="subheadline">Own Your Warehouse in Truganina</div>
+    <div class="cta-btn">Enquire Now <span class="arrow">→</span></div>
+  </div>
+  <div class="bottom-bar">
+    <div class="location">📍 Truganina, VIC — 20km from Melbourne CBD · Princes Freeway Access</div>
+    <div class="brand">Manny Singh · Fairmont Property Group</div>
+  </div>
+</div>
+</body>
+</html>
