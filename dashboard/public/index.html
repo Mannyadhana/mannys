@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Truganina Ads Dashboard</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e1e4e8; min-height: 100vh; }
+
+  .header { background: #161b22; border-bottom: 1px solid #30363d; padding: 20px 32px; display: flex; justify-content: space-between; align-items: center; }
+  .header h1 { font-size: 20px; font-weight: 600; }
+  .header h1 span { color: #58a6ff; }
+  .controls { display: flex; gap: 12px; align-items: center; }
+  .controls select, .controls button { background: #21262d; border: 1px solid #30363d; color: #e1e4e8; padding: 8px 16px; border-radius: 6px; font-size: 14px; cursor: pointer; }
+  .controls button { background: #238636; border-color: #238636; font-weight: 600; }
+  .controls button:hover { background: #2ea043; }
+  .controls button.refresh { background: #21262d; border-color: #30363d; }
+
+  .container { max-width: 1400px; margin: 0 auto; padding: 24px 32px; }
+
+  .summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 32px; }
+  .summary-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; }
+  .summary-card .label { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .summary-card .value { font-size: 28px; font-weight: 700; }
+  .summary-card .value.green { color: #3fb950; }
+  .summary-card .value.blue { color: #58a6ff; }
+  .summary-card .value.orange { color: #d29922; }
+  .summary-card .value.red { color: #f85149; }
+
+  .section-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+  .section-title .badge { background: #21262d; padding: 4px 12px; border-radius: 12px; font-size: 12px; color: #8b949e; }
+
+  table { width: 100%; border-collapse: collapse; background: #161b22; border: 1px solid #30363d; border-radius: 8px; overflow: hidden; margin-bottom: 32px; }
+  thead { background: #21262d; }
+  th { padding: 12px 16px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #8b949e; font-weight: 600; }
+  td { padding: 12px 16px; border-top: 1px solid #21262d; font-size: 14px; }
+  tr:hover { background: #1c2128; }
+  tr.winner { background: rgba(63, 185, 80, 0.08); }
+  tr.loser { background: rgba(248, 81, 73, 0.05); }
+
+  .status { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+  .status.active { background: rgba(63, 185, 80, 0.15); color: #3fb950; }
+  .status.paused { background: rgba(139, 148, 158, 0.15); color: #8b949e; }
+
+  .action-btn { padding: 4px 12px; border-radius: 4px; border: 1px solid #30363d; background: #21262d; color: #e1e4e8; font-size: 12px; cursor: pointer; }
+  .action-btn.pause { border-color: #f8514980; color: #f85149; }
+  .action-btn.activate { border-color: #3fb95080; color: #3fb950; }
+  .action-btn:hover { opacity: 0.8; }
+
+  .highlight-green { color: #3fb950; font-weight: 600; }
+  .highlight-red { color: #f85149; }
+
+  .loading { text-align: center; padding: 60px; color: #8b949e; }
+  .last-updated { font-size: 12px; color: #8b949e; }
+
+  @media (max-width: 768px) {
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+    .container { padding: 16px; }
+    table { font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span>Truganina Warehouses</span> Ad Dashboard</h1>
+  <div class="controls">
+    <select id="dateRange">
+      <option value="today">Today</option>
+      <option value="yesterday">Yesterday</option>
+      <option value="last_3d">Last 3 Days</option>
+      <option value="last_7d" selected>Last 7 Days</option>
+      <option value="last_14d">Last 14 Days</option>
+      <option value="last_30d">Last 30 Days</option>
+    </select>
+    <select id="campaignFilter">
+      <option value="">All Campaigns</option>
+    </select>
+    <button class="refresh" onclick="loadData()">Refresh</button>
+  </div>
+</div>
+
+<div class="container">
+  <div class="summary-grid" id="summaryCards">
+    <div class="summary-card"><div class="label">Total Spend</div><div class="value blue" id="totalSpend">$0.00</div></div>
+    <div class="summary-card"><div class="label">Impressions</div><div class="value" id="totalImpressions">0</div></div>
+    <div class="summary-card"><div class="label">Clicks / CTR</div><div class="value green" id="totalCTR">0 / 0%</div></div>
+    <div class="summary-card"><div class="label">Leads</div><div class="value orange" id="totalLeads">0</div></div>
+    <div class="summary-card"><div class="label">Cost per Lead</div><div class="value red" id="totalCPL">$0.00</div></div>
+  </div>
+
+  <div class="section-title">
+    <span>Ad Performance <span class="badge" id="adCount">0 ads</span></span>
+    <span class="last-updated" id="lastUpdated"></span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Ad Name</th>
+        <th>Status</th>
+        <th>Impressions</th>
+        <th>Clicks</th>
+        <th>CTR</th>
+        <th>CPC</th>
+        <th>Spend</th>
+        <th>Leads</th>
+        <th>Cost/Lead</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="adsTable">
+      <tr><td colspan="10" class="loading">Loading ads...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+let thresholds = { ctr: 2, roas: 2 };
+let allAds = [];
+
+async function loadThresholds() {
+  const res = await fetch('/api/thresholds');
+  thresholds = await res.json();
+}
+
+async function loadCampaigns() {
+  const res = await fetch('/api/campaigns');
+  const campaigns = await res.json();
+  const select = document.getElementById('campaignFilter');
+  campaigns.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.name;
+    select.appendChild(opt);
+  });
+}
+
+async function loadData() {
+  const datePreset = document.getElementById('dateRange').value;
+  const campaignId = document.getElementById('campaignFilter').value;
+
+  // Load summary
+  const summaryRes = await fetch(`/api/summary?date_preset=${datePreset}`);
+  const summary = await summaryRes.json();
+
+  document.getElementById('totalSpend').textContent = `$${summary.spend.toFixed(2)}`;
+  document.getElementById('totalImpressions').textContent = summary.impressions.toLocaleString();
+  document.getElementById('totalCTR').textContent = `${summary.clicks.toLocaleString()} / ${summary.ctr.toFixed(2)}%`;
+  document.getElementById('totalLeads').textContent = summary.leads;
+  document.getElementById('totalCPL').textContent = summary.cost_per_lead > 0 ? `$${parseFloat(summary.cost_per_lead).toFixed(2)}` : '--';
+
+  // Load ads
+  let url = `/api/ads?date_preset=${datePreset}`;
+  if (campaignId) url += `&campaign_id=${campaignId}`;
+
+  const adsRes = await fetch(url);
+  allAds = await adsRes.json();
+  renderAds(allAds);
+
+  document.getElementById('lastUpdated').textContent = `Updated: ${new Date().toLocaleString()}`;
+}
+
+function renderAds(ads) {
+  const tbody = document.getElementById('adsTable');
+  document.getElementById('adCount').textContent = `${ads.length} ads`;
+
+  if (ads.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" class="loading">No ads with data yet. Activate your campaign to start seeing results.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = ads.map(ad => {
+    const isWinner = ad.ctr >= thresholds.ctr;
+    const isLoser = ad.impressions > 500 && ad.ctr < 0.5;
+    const rowClass = isWinner ? 'winner' : isLoser ? 'loser' : '';
+    const ctrClass = ad.ctr >= thresholds.ctr ? 'highlight-green' : ad.ctr < 0.5 && ad.impressions > 500 ? 'highlight-red' : '';
+    const statusClass = ad.status === 'ACTIVE' ? 'active' : 'paused';
+
+    const actionBtn = ad.status === 'ACTIVE'
+      ? `<button class="action-btn pause" onclick="pauseAd('${ad.id}')">Pause</button>`
+      : `<button class="action-btn activate" onclick="activateAd('${ad.id}')">Activate</button>`;
+
+    return `<tr class="${rowClass}">
+      <td title="${ad.name}">${ad.name.length > 35 ? ad.name.slice(0, 35) + '...' : ad.name}</td>
+      <td><span class="status ${statusClass}">${ad.status}</span></td>
+      <td>${ad.impressions.toLocaleString()}</td>
+      <td>${ad.clicks.toLocaleString()}</td>
+      <td class="${ctrClass}">${ad.ctr.toFixed(2)}%</td>
+      <td>$${ad.cpc.toFixed(2)}</td>
+      <td>$${ad.spend.toFixed(2)}</td>
+      <td>${ad.leads}</td>
+      <td>${ad.cost_per_lead > 0 ? '$' + parseFloat(ad.cost_per_lead).toFixed(2) : '--'}</td>
+      <td>${actionBtn}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function pauseAd(adId) {
+  if (!confirm('Pause this ad?')) return;
+  await fetch(`/api/ads/${adId}/pause`, { method: 'POST' });
+  loadData();
+}
+
+async function activateAd(adId) {
+  if (!confirm('Activate this ad?')) return;
+  await fetch(`/api/ads/${adId}/activate`, { method: 'POST' });
+  loadData();
+}
+
+document.getElementById('dateRange').addEventListener('change', loadData);
+document.getElementById('campaignFilter').addEventListener('change', loadData);
+
+loadThresholds();
+loadCampaigns();
+loadData();
+
+// Auto-refresh every 6 hours
+setInterval(loadData, 6 * 60 * 60 * 1000);
+</script>
+</body>
+</html>
