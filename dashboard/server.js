@@ -2,9 +2,17 @@ require("dotenv").config();
 const express = require("express");
 const bizSdk = require("facebook-nodejs-business-sdk");
 const path = require("path");
+const { runOptimization } = require("./optimizer");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+let checkNowState = {
+  running: false,
+  startedAt: null,
+  lastResult: null,
+  lastError: null,
+};
 
 const accessToken = process.env.META_ACCESS_TOKEN;
 const adAccountId = process.env.META_AD_ACCOUNT;
@@ -220,6 +228,49 @@ app.get("/api/summary", async (req, res) => {
 // API: Get thresholds
 app.get("/api/thresholds", (req, res) => {
   res.json({ ctr: CTR_THRESHOLD, roas: ROAS_THRESHOLD });
+});
+
+// API: Trigger an on-demand optimizer run
+app.post("/api/check-now", async (req, res) => {
+  if (checkNowState.running) {
+    return res.status(409).json({
+      error: "Optimization already running",
+      startedAt: checkNowState.startedAt,
+    });
+  }
+
+  checkNowState = {
+    running: true,
+    startedAt: new Date().toISOString(),
+    lastResult: checkNowState.lastResult,
+    lastError: null,
+  };
+
+  // Run in background so request returns quickly
+  runOptimization()
+    .then((result) => {
+      checkNowState = {
+        running: false,
+        startedAt: null,
+        lastResult: result,
+        lastError: null,
+      };
+    })
+    .catch((err) => {
+      checkNowState = {
+        running: false,
+        startedAt: null,
+        lastResult: checkNowState.lastResult,
+        lastError: err.message,
+      };
+    });
+
+  res.json({ started: true, startedAt: checkNowState.startedAt });
+});
+
+// API: Poll the state of on-demand optimizer runs
+app.get("/api/check-now/status", (req, res) => {
+  res.json(checkNowState);
 });
 
 app.listen(PORT, "0.0.0.0", () => {

@@ -65,6 +65,10 @@ async function runOptimization() {
   const ads = await getActiveAds();
   log(`Found ${ads.length} active ads in Truganina campaigns`);
 
+  const startedAt = new Date().toISOString();
+  const pausedAds = [];
+  const winnerAds = [];
+  const boosts = [];
   let paused = 0;
   let winners = 0;
   let needsData = 0;
@@ -94,34 +98,44 @@ async function runOptimization() {
 
     // Rule 1: Kill ads with high impressions but zero clicks
     if (impressions >= MIN_IMPRESSIONS && clicks === 0) {
-      await pauseAd(data.id, `Zero clicks after ${impressions} impressions - ${data.name}`);
+      const reason = `Zero clicks after ${impressions} impressions`;
+      await pauseAd(data.id, `${reason} - ${data.name}`);
+      pausedAds.push({ id: data.id, name: data.name, reason });
       paused++;
       continue;
     }
 
     // Rule 2: Kill ads with very low CTR after sufficient impressions
     if (impressions >= MIN_IMPRESSIONS && ctr < 0.5) {
-      await pauseAd(data.id, `CTR too low: ${ctr.toFixed(2)}% after ${impressions} impressions - ${data.name}`);
+      const reason = `CTR too low: ${ctr.toFixed(2)}% after ${impressions} impressions`;
+      await pauseAd(data.id, `${reason} - ${data.name}`);
+      pausedAds.push({ id: data.id, name: data.name, reason });
       paused++;
       continue;
     }
 
     // Rule 3: Kill ads with cost per lead exceeding threshold
     if (parseInt(leads) === 0 && spend > MAX_CPL) {
-      await pauseAd(data.id, `Spent $${spend.toFixed(2)} with zero leads - ${data.name}`);
+      const reason = `Spent $${spend.toFixed(2)} with zero leads`;
+      await pauseAd(data.id, `${reason} - ${data.name}`);
+      pausedAds.push({ id: data.id, name: data.name, reason });
       paused++;
       continue;
     }
 
     if (parseFloat(costPerLead) > MAX_CPL && parseInt(leads) > 0) {
-      await pauseAd(data.id, `Cost per lead too high: $${parseFloat(costPerLead).toFixed(2)} - ${data.name}`);
+      const reason = `Cost per lead too high: $${parseFloat(costPerLead).toFixed(2)}`;
+      await pauseAd(data.id, `${reason} - ${data.name}`);
+      pausedAds.push({ id: data.id, name: data.name, reason });
       paused++;
       continue;
     }
 
     // Rule 4: Pause ads with high frequency (ad fatigue)
     if (frequency > MAX_FREQUENCY && impressions >= MIN_IMPRESSIONS) {
-      await pauseAd(data.id, `Ad fatigue - frequency ${frequency.toFixed(1)} exceeds ${MAX_FREQUENCY} - ${data.name}`);
+      const reason = `Ad fatigue - frequency ${frequency.toFixed(1)} exceeds ${MAX_FREQUENCY}`;
+      await pauseAd(data.id, `${reason} - ${data.name}`);
+      pausedAds.push({ id: data.id, name: data.name, reason });
       paused++;
       continue;
     }
@@ -129,6 +143,13 @@ async function runOptimization() {
     // Rule 5: Winners — boost budget on their ad set
     if (ctr >= CTR_THRESHOLD && impressions >= MIN_IMPRESSIONS) {
       winners++;
+      winnerAds.push({
+        id: data.id,
+        name: data.name,
+        ctr: parseFloat(ctr.toFixed(2)),
+        leads: parseInt(leads),
+        cost_per_lead: parseFloat(parseFloat(costPerLead).toFixed(2)),
+      });
       log(`WINNER: ${data.name} - CTR: ${ctr.toFixed(2)}%, Leads: ${leads}, CPL: $${parseFloat(costPerLead).toFixed(2)}`);
 
       // Boost budget on the winning ad's ad set
@@ -141,6 +162,12 @@ async function runOptimization() {
         if (newBudget <= MAX_DAILY_BUDGET && newBudget > currentBudget) {
           await adSet.update([], { daily_budget: newBudget });
           log(`BUDGET BOOST: ${adSetData._data.name} - $${(currentBudget / 100).toFixed(2)}/day -> $${(newBudget / 100).toFixed(2)}/day (+${BUDGET_BOOST_PERCENT}%) — triggered by winner: ${data.name}`);
+          boosts.push({
+            adset_name: adSetData._data.name,
+            from: parseFloat((currentBudget / 100).toFixed(2)),
+            to: parseFloat((newBudget / 100).toFixed(2)),
+            triggered_by: data.name,
+          });
         } else if (newBudget > MAX_DAILY_BUDGET) {
           log(`BUDGET CAP: ${adSetData._data.name} already at max $${(MAX_DAILY_BUDGET / 100).toFixed(2)}/day`);
         }
@@ -152,11 +179,25 @@ async function runOptimization() {
     await new Promise((r) => setTimeout(r, 300));
   }
 
+  const finishedAt = new Date().toISOString();
   log(`=== Optimization Complete ===`);
   log(`Results: ${winners} winners, ${paused} paused, ${needsData} need more data`);
   log(`Active ads remaining: ${ads.length - paused}`);
   log(`Next check in ${CHECK_INTERVAL_HOURS} hours`);
   log("");
+
+  return {
+    startedAt,
+    finishedAt,
+    totalAds: ads.length,
+    winners,
+    paused,
+    needsData,
+    remaining: ads.length - paused,
+    pausedAds,
+    winnerAds,
+    boosts,
+  };
 }
 
 async function startLoop() {
@@ -177,7 +218,11 @@ async function startLoop() {
   }, CHECK_INTERVAL_HOURS * 60 * 60 * 1000);
 }
 
-startLoop().catch((err) => {
-  log(`FATAL: ${err.message}`);
-  process.exit(1);
-});
+if (require.main === module) {
+  startLoop().catch((err) => {
+    log(`FATAL: ${err.message}`);
+    process.exit(1);
+  });
+}
+
+module.exports = { runOptimization };

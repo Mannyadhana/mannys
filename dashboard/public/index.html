@@ -16,6 +16,26 @@
   .controls button { background: #238636; border-color: #238636; font-weight: 600; }
   .controls button:hover { background: #2ea043; }
   .controls button.refresh { background: #21262d; border-color: #30363d; }
+  .controls button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .controls button.check-now { background: #1f6feb; border-color: #1f6feb; }
+  .controls button.check-now:hover:not(:disabled) { background: #388bfd; }
+
+  .check-panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px; display: none; }
+  .check-panel.visible { display: block; }
+  .check-panel .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .check-panel .panel-title { font-size: 14px; font-weight: 600; }
+  .check-panel .panel-meta { font-size: 12px; color: #8b949e; }
+  .check-panel .stats { display: flex; gap: 24px; margin-bottom: 12px; flex-wrap: wrap; }
+  .check-panel .stat { font-size: 13px; }
+  .check-panel .stat strong { display: block; font-size: 18px; margin-top: 2px; }
+  .check-panel .stat.winners strong { color: #3fb950; }
+  .check-panel .stat.paused strong { color: #f85149; }
+  .check-panel .stat.boosts strong { color: #d29922; }
+  .check-panel .details { font-size: 12px; color: #8b949e; max-height: 120px; overflow-y: auto; }
+  .check-panel .details div { padding: 2px 0; }
+  .check-panel.error { border-color: #f8514980; }
+  .check-panel .spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid #30363d; border-top-color: #58a6ff; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   .container { max-width: 1400px; margin: 0 auto; padding: 24px 32px; }
 
@@ -78,10 +98,20 @@
       <option value="">All Campaigns</option>
     </select>
     <button class="refresh" onclick="loadData()">Refresh</button>
+    <button class="check-now" id="checkNowBtn" onclick="triggerCheckNow()">Check Now</button>
   </div>
 </div>
 
 <div class="container">
+  <div class="check-panel" id="checkPanel">
+    <div class="panel-header">
+      <div class="panel-title" id="checkPanelTitle">Optimizer Check</div>
+      <div class="panel-meta" id="checkPanelMeta"></div>
+    </div>
+    <div class="stats" id="checkPanelStats"></div>
+    <div class="details" id="checkPanelDetails"></div>
+  </div>
+
   <div class="summary-grid" id="summaryCards">
     <div class="summary-card"><div class="label">Total Spend</div><div class="value blue" id="totalSpend">$0.00</div></div>
     <div class="summary-card"><div class="label">Impressions</div><div class="value" id="totalImpressions">0</div></div>
@@ -209,12 +239,138 @@ async function activateAd(adId) {
   loadData();
 }
 
+let checkPollTimer = null;
+
+async function triggerCheckNow() {
+  const btn = document.getElementById('checkNowBtn');
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
+
+  try {
+    const res = await fetch('/api/check-now', { method: 'POST' });
+    if (res.status === 409) {
+      // Already running — just start polling
+    } else if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to start check' }));
+      showCheckPanel({ error: err.error || 'Failed to start check' });
+      btn.disabled = false;
+      btn.textContent = 'Check Now';
+      return;
+    }
+    showCheckPanel({ running: true, startedAt: new Date().toISOString() });
+    pollCheckStatus();
+  } catch (e) {
+    showCheckPanel({ error: e.message });
+    btn.disabled = false;
+    btn.textContent = 'Check Now';
+  }
+}
+
+function pollCheckStatus() {
+  if (checkPollTimer) clearInterval(checkPollTimer);
+  checkPollTimer = setInterval(async () => {
+    try {
+      const res = await fetch('/api/check-now/status');
+      const state = await res.json();
+      showCheckPanel(state);
+      if (!state.running) {
+        clearInterval(checkPollTimer);
+        checkPollTimer = null;
+        const btn = document.getElementById('checkNowBtn');
+        btn.disabled = false;
+        btn.textContent = 'Check Now';
+        // Refresh ad data to reflect pauses/boosts
+        loadData();
+      }
+    } catch (e) {
+      // Keep polling
+    }
+  }, 3000);
+}
+
+function showCheckPanel(state) {
+  const panel = document.getElementById('checkPanel');
+  const title = document.getElementById('checkPanelTitle');
+  const meta = document.getElementById('checkPanelMeta');
+  const stats = document.getElementById('checkPanelStats');
+  const details = document.getElementById('checkPanelDetails');
+
+  panel.classList.add('visible');
+  panel.classList.toggle('error', !!state.error || !!state.lastError);
+
+  if (state.running) {
+    title.innerHTML = '<span class="spinner"></span>Optimization running…';
+    meta.textContent = state.startedAt ? `Started ${new Date(state.startedAt).toLocaleTimeString()}` : '';
+    stats.innerHTML = '';
+    details.textContent = 'Scanning active ads, applying rules, and adjusting budgets.';
+    return;
+  }
+
+  if (state.error || state.lastError) {
+    title.textContent = 'Optimization failed';
+    meta.textContent = '';
+    stats.innerHTML = '';
+    details.textContent = state.error || state.lastError;
+    return;
+  }
+
+  const result = state.lastResult || state;
+  if (!result || typeof result.totalAds === 'undefined') {
+    panel.classList.remove('visible');
+    return;
+  }
+
+  title.textContent = 'Last optimization run';
+  meta.textContent = result.finishedAt ? `Finished ${new Date(result.finishedAt).toLocaleString()}` : '';
+
+  stats.innerHTML = `
+    <div class="stat"><span>Scanned</span><strong>${result.totalAds}</strong></div>
+    <div class="stat winners"><span>Winners</span><strong>${result.winners}</strong></div>
+    <div class="stat paused"><span>Paused</span><strong>${result.paused}</strong></div>
+    <div class="stat boosts"><span>Budget boosts</span><strong>${(result.boosts || []).length}</strong></div>
+    <div class="stat"><span>Need data</span><strong>${result.needsData}</strong></div>
+  `;
+
+  const lines = [];
+  (result.pausedAds || []).forEach(a => lines.push(`<div>⏸ Paused <em>${escapeHtml(a.name)}</em> — ${escapeHtml(a.reason)}</div>`));
+  (result.boosts || []).forEach(b => lines.push(`<div>⬆ Boosted <em>${escapeHtml(b.adset_name)}</em> $${b.from.toFixed(2)} → $${b.to.toFixed(2)}/day (winner: ${escapeHtml(b.triggered_by)})</div>`));
+  (result.winnerAds || []).forEach(w => {
+    if (!(result.boosts || []).some(b => b.triggered_by === w.name)) {
+      lines.push(`<div>★ Winner <em>${escapeHtml(w.name)}</em> — CTR ${w.ctr}%, leads ${w.leads}</div>`);
+    }
+  });
+  details.innerHTML = lines.length ? lines.join('') : '<div>No actions taken this run.</div>';
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+async function initCheckStatus() {
+  try {
+    const res = await fetch('/api/check-now/status');
+    const state = await res.json();
+    if (state.running) {
+      const btn = document.getElementById('checkNowBtn');
+      btn.disabled = true;
+      btn.textContent = 'Checking…';
+      showCheckPanel(state);
+      pollCheckStatus();
+    } else if (state.lastResult) {
+      showCheckPanel(state);
+    }
+  } catch (e) { /* ignore */ }
+}
+
 document.getElementById('dateRange').addEventListener('change', loadData);
 document.getElementById('campaignFilter').addEventListener('change', loadData);
 
 loadThresholds();
 loadCampaigns();
 loadData();
+initCheckStatus();
 
 // Auto-refresh every 6 hours
 setInterval(loadData, 6 * 60 * 60 * 1000);
